@@ -44,12 +44,9 @@ of a cached copy.
 
 ## Deploy
 
-Any static host works:
-
-- **GitHub Pages:** push this folder to a repo named `divyakumarprajapati.github.io`. The site is then live at https://divyakumarprajapati.github.io.
-- **Vercel or Netlify:** import the repo, or drag the folder onto Netlify Drop. No build command, output directory is the root.
-
-After it is live, change `og:image` in `index.html` to the full URL (for example `https://divyakumarprajapati.github.io/assets/og.png`). LinkedIn and X only show the preview image when that URL is absolute.
+Live at https://divyakumarprajapati.github.io, served by GitHub Pages from the `main`
+branch of `divyakumarprajapati/divyakumarprajapati.github.io`. To publish a change,
+commit and push to `main`; Pages rebuilds in about 30 seconds.
 
 ## Updating
 
