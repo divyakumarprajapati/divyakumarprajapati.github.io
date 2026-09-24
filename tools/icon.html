@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!-- Source for the browser icons (assets/favicon-*.png, assets/apple-touch-icon.png, favicon.ico). See README. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Icon source</title>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@600&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; width: 512px; height: 512px; background: transparent; }
+    .icon {
+      position: relative;
+      display: grid; place-items: center;
+      width: 512px; height: 512px;
+      overflow: hidden;
+      border-radius: 116px;
+      background:
+        radial-gradient(90% 70% at 50% 110%, rgba(255, 111, 125, 0.55), transparent 70%),
+        linear-gradient(180deg, #16111e, #0c0b10);
+    }
+    .full .icon { border-radius: 0; }
+    .icon span {
+      font: 600 270px/1 "Onest", sans-serif;
+      letter-spacing: -0.075em;
+      transform: translate(-8px, -10px);
+      background: linear-gradient(100deg, #ffb45e 0%, #ff6f7d 55%, #a78bfa 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon"><span>DP</span></div>
+  <script>if (location.hash === '#full') document.body.classList.add('full');</script>
+</body>
+</html>
