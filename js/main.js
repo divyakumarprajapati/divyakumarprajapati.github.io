@@ -145,8 +145,27 @@
       drawJourney(jr.draw);
     };
 
+    // The first lens opens from the photo on the hello screen: find its centre in
+    // stage coordinates from layout values, so transforms never skew the numbers.
+    const stage = $('.intro__stage', intro);
+    const photo = $('[data-hero-lens]', intro);
+    const origin = { x: 0, y: 0, r: 0 };
+    const measurePhoto = () => {
+      if (!photo) return;
+      let x = photo.offsetWidth / 2;
+      let y = photo.offsetHeight / 2;
+      for (let el = photo; el && el !== stage; el = el.offsetParent) { x += el.offsetLeft; y += el.offsetTop; }
+      origin.x = x;
+      origin.y = y;
+      origin.r = photo.offsetWidth / 2;
+      // the hello world zooms toward the photo as you fly into it
+      bgs[0].style.transformOrigin = `${x.toFixed(1)}px ${y.toFixed(1)}px`;
+      texts[0].style.transformOrigin = `${x.toFixed(1)}px ${y.toFixed(1)}px`;
+    };
+
     // Each visual starts just below its words, measured from layout (not transforms),
     // so text and animation never overlap whatever the screen size.
+    let afterLayout = null;
     const layout = () => {
       scenes.forEach((scene, i) => {
         const block = texts[i].firstElementChild;
@@ -154,6 +173,8 @@
         scene.style.setProperty('--safe-top', `${Math.round(bottom + 22)}px`);
       });
       layoutJourney();
+      measurePhoto();
+      if (afterLayout) afterLayout();
     };
     layout();
     window.addEventListener('resize', layout);
@@ -162,14 +183,34 @@
     if (reduce) {
       feeds.forEach((f) => { if (f) f.dataset.idle = '0'; });
     } else {
-      let queued = false;
       const span = () => intro.offsetHeight - window.innerHeight;
 
-      const update = () => {
-        queued = false;
-        const p = clamp(-intro.getBoundingClientRect().top / span(), 0, 1);
+      // a shade per scene dims a world as the next one opens (opacity only, no filters)
+      const shades = scenes.map((scene, i) => {
+        const shade = document.createElement('i');
+        shade.className = 'scene__shade';
+        shade.setAttribute('aria-hidden', 'true');
+        scene.insertBefore(shade, texts[i]);
+        return shade;
+      });
+      const seen = scenes.map(() => ({ hidden: null, current: null, idle: null }));
+      let W = 0, H = 0, radii = [], ringFor = -1, hudIndex = -1;
+
+      const lensOf = (i) => (i === 1 && origin.r > 0
+        ? { x: origin.x, y: origin.y, r0: origin.r }
+        : { x: W / 2, y: H / 2, r0: 0 });
+      const measure = () => {
+        W = stage.clientWidth;
+        H = stage.clientHeight;
+        radii = scenes.map((_, i) => {
+          const { x, y } = lensOf(i);
+          return Math.hypot(Math.max(x, W - x), Math.max(y, H - y)) + 40;
+        });
+        ringFor = -1;
+      };
+
+      const render = (p) => {
         const pos = p * (N - 1 + TAIL);
-        const R = Math.hypot(window.innerWidth, window.innerHeight) / 2 + 40;
 
         // how far each world's lens has opened (the first world is the base layer)
         const open = scenes.map((_, i) => (i === 0 ? 1 : smooth(clamp((pos - (i - 1) - 0.42) / 0.58, 0, 1))));
@@ -180,44 +221,80 @@
           const o = open[i];
           const next = i + 1 < N ? open[i + 1] : 0;
           const hidden = (i > 0 && o <= 0) || next >= 1;
-          scene.style.visibility = hidden ? 'hidden' : 'visible';
-          scene.setAttribute('aria-hidden', String(i !== current));
-          if (i > 0) scene.style.clipPath = o >= 1 ? 'none' : `circle(${(o * R).toFixed(1)}px at 50% 50%)`;
+          const st = seen[i];
+          if (st.hidden !== hidden) { scene.style.visibility = hidden ? 'hidden' : 'visible'; st.hidden = hidden; }
+          if (st.current !== (i === current)) { scene.setAttribute('aria-hidden', String(i !== current)); st.current = i === current; }
+          if (feeds[i] && st.idle !== hidden) { feeds[i].dataset.idle = hidden ? '1' : '0'; st.idle = hidden; }
+          if (hidden) return;
+
+          if (i > 0) {
+            const { x, y, r0 } = lensOf(i);
+            scene.style.clipPath = o >= 1 ? 'none' : `circle(${(r0 + o * (radii[i] - r0)).toFixed(1)}px at ${x.toFixed(1)}px ${y.toFixed(1)}px)`;
+            // opening from the photo: the new world fades in inside the photo's circle first
+            if (r0 > 0) scene.style.opacity = clamp(o / 0.08, 0, 1).toFixed(3);
+          }
 
           // a new world arrives slightly magnified and settles; the old one rushes past
           const drift = clamp(pos - i, 0, 1);
           const zoom = (i > 0 ? 1.2 - 0.2 * o : 1) + 0.04 * drift + 1.1 * next * next;
           bgs[i].style.transform = `scale(${zoom.toFixed(4)})`;
-          bgs[i].style.filter = next > 0 ? `brightness(${(1 - 0.5 * next).toFixed(3)})` : '';
+          shades[i].style.opacity = (0.55 * next).toFixed(3);
 
-          // words come in once the lens is mostly open and leave as the next one starts
-          const tIn = i === 0 ? 1 : clamp((o - 0.5) / 0.4, 0, 1);
+          // words come in once the lens is mostly open and leave as the next one starts;
+          // on the hello screen they zoom into the photo instead
+          const tIn = i === 0 ? 1 : clamp((o - 0.6) / 0.34, 0, 1);
           const tOut = clamp(next / 0.3, 0, 1);
-          const a = tIn * (1 - tOut);
           const t = texts[i];
-          t.style.opacity = a.toFixed(3);
-          t.style.transform = `translateY(${((1 - tIn) * 28 - tOut * 28).toFixed(1)}px) scale(${(1 + tOut * 0.1).toFixed(3)})`;
-          t.style.filter = a < 0.999 ? `blur(${((1 - a) * 10).toFixed(1)}px)` : 'none';
+          t.style.opacity = (tIn * (1 - tOut)).toFixed(3);
+          t.style.transform = i === 0
+            ? `scale(${(1 + 1.8 * next * next).toFixed(4)})`
+            : `translate3d(0, ${((1 - tIn) * 28 - tOut * 28).toFixed(1)}px, 0) scale(${(1 + tOut * 0.1).toFixed(3)})`;
 
           // the story so far: the constellation draws itself while you read it
           if (scene === journey) drawJourney(smooth(clamp((pos - (i - 1) - 0.72) / 0.62, 0, 1)));
-
-          if (feeds[i]) feeds[i].dataset.idle = hidden ? '1' : '0';
         });
 
-        // the glowing rim rides the edge of whichever lens is opening
-        let rim = 0, rimR = 0;
-        for (let i = 1; i < N; i++) {
-          if (open[i] > 0 && open[i] < 1) { rim = Math.sin(open[i] * Math.PI); rimR = open[i] * R; }
+        // the glowing rim rides the edge of whichever lens is opening (a scaled layer, no relayout)
+        let a = -1;
+        for (let i = 1; i < N; i++) if (open[i] > 0 && open[i] < 1) a = i;
+        if (a < 0) {
+          ring.style.opacity = '0';
+        } else {
+          const R = radii[a];
+          const { x, y, r0 } = lensOf(a);
+          if (ringFor !== a) { ring.style.width = ring.style.height = `${Math.round(2 * R)}px`; ringFor = a; }
+          const r = r0 + open[a] * (R - r0);
+          ring.style.opacity = Math.sin(open[a] * Math.PI).toFixed(3);
+          ring.style.transform = `translate3d(${(x - R).toFixed(1)}px, ${(y - R).toFixed(1)}px, 0) scale(${(r / R).toFixed(4)})`;
         }
-        ring.style.opacity = rim.toFixed(3);
-        ring.style.width = ring.style.height = `${(rimR * 2).toFixed(1)}px`;
 
-        hudCount.textContent = `${pad(current + 1)} / ${pad(N)}`;
-        hudName.textContent = scenes[current].dataset.scene;
-        hudBar.style.width = `${(p * 100).toFixed(1)}%`;
+        if (hudIndex !== current) {
+          hudCount.textContent = `${pad(current + 1)} / ${pad(N)}`;
+          hudName.textContent = scenes[current].dataset.scene;
+          hudIndex = current;
+        }
+        hudBar.style.transform = `scaleX(${p.toFixed(4)})`;
         if (cue) cue.style.opacity = String(clamp(1 - pos * 4, 0, 1));
       };
+
+      // The zoom follows the scroll position with a little easing, so mouse wheels
+      // and uneven trackpad input still glide instead of stepping.
+      let target = 0, shown = 0, raf = 0, last = 0;
+      const read = () => clamp(-intro.getBoundingClientRect().top / span(), 0, 1);
+      const loop = (now) => {
+        const dt = last ? Math.min(64, now - last) : 16.7;
+        last = now;
+        shown += (target - shown) * (1 - Math.pow(1 - 0.14, dt / 16.7));
+        if (Math.abs(target - shown) < 0.0002) shown = target;
+        render(shown);
+        if (shown === target) { raf = 0; last = 0; } else { raf = requestAnimationFrame(loop); }
+      };
+      const kick = () => { target = read(); if (!raf) raf = requestAnimationFrame(loop); };
+
+      afterLayout = () => { measure(); target = read(); render(shown); };
+      measure();
+      target = shown = read();
+      render(shown);
 
       // "Scroll for my story" glides to the next chapter instead of skipping the story
       if (cue) {
@@ -228,10 +305,7 @@
         });
       }
 
-      const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
-      window.addEventListener('scroll', queue, { passive: true });
-      window.addEventListener('resize', queue);
-      update();
+      window.addEventListener('scroll', kick, { passive: true });
     }
   }
 

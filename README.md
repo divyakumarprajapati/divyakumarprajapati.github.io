@@ -19,7 +19,10 @@ tools/serve.py      local preview server with caching turned off
 The intro tells a short story in five scenes: Hello, the story so far (a constellation of
 milestones), William O’Neil, CourtNG and Vulrend. It is a 580vh section with a sticky
 stage inside it. As you scroll, `js/main.js` opens each next scene inside a growing circle
-(`clip-path`) while the current one zooms past, with a glowing lens rim on the edge.
+(`clip-path`) while the current one zooms past, with a glowing lens rim on the edge. The
+first lens opens out of the photo on the hello screen. The zoom eases toward the scroll
+position, and every per-frame effect is a transform or opacity change, so it stays smooth
+with a mouse wheel as well as a trackpad.
 
 Each scene keeps its words at the top and its visual in a `.scene__stage` below them. The
 script measures the words and sets `--safe-top` on the scene, so text and animation never
